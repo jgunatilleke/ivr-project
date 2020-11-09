@@ -25,9 +25,9 @@ class image_converter:
     self.bridge = CvBridge()
 
     ########
-    self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
     self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
     self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10)
+    self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)
     self.t0 = rospy.get_time()
     self.cur_time = 0
     ########
@@ -55,21 +55,21 @@ class image_converter:
     z_d = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
     #self.joints.data = np.array([x_d, y_d, z_d])
 
-    self.joint1=Float64()
-    self.joint1.data= np.array(x_d)
     self.joint2=Float64()
-    self.joint2.data= np.array(y_d)
+    self.joint2.data= np.array(x_d)
     self.joint3=Float64()
-    self.joint3.data= np.array(z_d)
+    self.joint3.data= np.array(y_d)
+    self.joint4=Float64()
+    self.joint4.data= np.array(z_d)
     ########
 
     # Publish the results
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
       ########
-      self.robot_joint1_pub.publish(self.joint1)
       self.robot_joint2_pub.publish(self.joint2)
       self.robot_joint3_pub.publish(self.joint3)
+      self.robot_joint4_pub.publish(self.joint4)
       ########
     except CvBridgeError as e:
       print(e)
