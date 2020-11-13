@@ -28,11 +28,27 @@ class image_converter:
     # initialize a subscriber to recieve messages from a topic named /robot/camera1/image_raw and use callback function to recieve data
     self.image_sub2 = message_filters.Subscriber("/camera2/robot/image_raw",Image)
 
-    self.ts = message_filters.ApproximateTimeSynchronizer([self.image_sub1, self.image_sub2],10,1)
+    #######
+    self.joints_pub = rospy.Publisher("/robot/joint_states", Float64MultiArray, queue_size=10)
+    self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
+    self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10)
+    self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)
+    #######
+
+
+    self.ts = message_filters.ApproximateTimeSynchronizer([self.image_sub1, self.image_sub2],1,1)
     self.ts.registerCallback(self.callback1)
-    self.ts.registerCallback(self.callback2)
+    #self.ts.registerCallback(self.callback2)
+
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
+
+    ########
+
+    self.t0 = rospy.get_time()
+    self.cur_time = 0
+
+    ########
 
 
   # Detecting the centre of the green circle
@@ -102,8 +118,8 @@ class image_converter:
       return 3.5 / np.sqrt(dist)
 
 
-    # Calculate the relevant joint angles from the image
-  def detect_joint_angles(self,image):
+    # Calculate the relevant joint angles from the image in camera 1
+  def detect_joint_angles_cam1(self,image):
     a = self.pixel2meter(image)
     # Obtain the centre of each coloured blob
     center = a * self.detect_yellow(image)
@@ -111,11 +127,26 @@ class image_converter:
     circle2Pos = a * self.detect_green(image)
     circle3Pos = a * self.detect_red(image)
     # Solve using trigonometry
-    ja1 = np.arctan2(center[0]- circle1Pos[0], center[1] - circle1Pos[1])
+    ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
     ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    return np.array([ja2, ja3, ja4])
+    return np.array([ja2, ja4])
+
+    # Calculate the relevant joint angles from the image in camera 2
+  def detect_joint_angles_cam2(self,image):
+    a = self.pixel2meter(image)
+    # Obtain the centre of each coloured blob
+    center = a * self.detect_yellow(image)
+    circle1Pos = a * self.detect_blue(image)
+    circle2Pos = a * self.detect_green(image)
+    circle3Pos = a * self.detect_red(image)
+    # Solve using trigonometry
+    ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
+    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
+    return ja3
 
   # Detecting the centre of the orange circle
   def detect_orange_sphere(self,image):
@@ -133,6 +164,7 @@ class image_converter:
         if len(approx) < 5:
           cx = 0.0
           cy = 0.0
+
         else:
           # Obtain the moments of the binary image
           M = cv2.moments(cnt)
@@ -147,65 +179,76 @@ class image_converter:
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data, data1):
+    ########
+    self.cur_time = np.array([rospy.get_time()]) - self.t0
+    ########
     # Recieve the image
     try:
       self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      self.cv_image2 = self.bridge.imgmsg_to_cv2(data1, "bgr8")
     except CvBridgeError as e:
       print(e)
     
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    a = self.detect_joint_angles(self.cv_image1)
+    ########
+    x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
+    y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
+    x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
+    print("\nactual joint positions")
+    print(x_2, y_3, x_4)
+    print('####')
+    print('####')
+
+    self.joint2_act = Float64()
+    self.joint2_act.data = np.array(x_2)
+    self.joint3_act = Float64()
+    self.joint3_act.data = np.array(y_3)
+    self.joint4_act = Float64()
+    self.joint4_act.data = np.array(x_4)
+    ########
+
+    a = self.detect_joint_angles_cam1(self.cv_image1)
     b = self.detect_orange_sphere(self.cv_image1)
-    #im1=cv2.imshow('window1', self.cv_image1)
+
     cv2.imshow('window1', self.cv_image1)
-    #cv2.imshow('window2', self.cv_image2)
+    cv2.imshow('window2', self.cv_image2)
+
 
     cv2.waitKey(1)
 
-    self.joints = Float64MultiArray()
-    self.joints.data = a
+    joint2 = a[0]
+    joint4 = a[1]
+    d = self.detect_orange_sphere(self.cv_image2)
+    c = self.detect_joint_angles_cam2(self.cv_image2)
+    joint3 = c
 
-    print(self.joints)
-    print (b)
+    self.joints = Float64MultiArray()
+    self.joints.data = a[0], c, a[1]
+
+    print("joint array", self.joints)
+
+    print("joint 2 %f" % joint2)
+    print("joint 3 %f" % joint3)
+    print("joint 4 %f" % joint4)
+    #print(self.joints)
+    print ("orange coord cam 1:", b)
+    print("orange coord cam 2:", d)
 
     # Publish the results
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
+      self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
+      self.joints_pub.publish(self.joints)
+      ########
+      self.robot_joint2_pub.publish(self.joint2_act)
+      self.robot_joint3_pub.publish(self.joint3_act)
+      self.robot_joint4_pub.publish(self.joint4_act)
+      ########
     except CvBridgeError as e:
       print(e)
 
-  # Recieve data from camera 2, process it, and publish
-  def callback2(self, data, data1):
-      # Recieve the image
-      try:
-          self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
-      except CvBridgeError as e:
-          print(e)
-
-      # Uncomment if you want to save the image
-      # cv2.imwrite('image_copy.png', cv_image)
-
-      #a = self.detect_joint_angles(self.cv_image1)
-      #b = self.detect_orange_sphere(self.cv_image1)
-      # im1=cv2.imshow('window1', self.cv_image1)
-      # cv2.imshow('window1', self.cv_image1)
-      cv2.imshow('window2', self.cv_image2)
-
-      cv2.waitKey(1)
-
-      #self.joints = Float64MultiArray()
-      #self.joints.data = a
-
-      #print(self.joints)
-      #print(b)
-
-      # Publish the results
-      try:
-          self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-      except CvBridgeError as e:
-          print(e)
 
 # call the class
 def main(args):
