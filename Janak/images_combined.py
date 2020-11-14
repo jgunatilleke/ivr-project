@@ -28,27 +28,24 @@ class image_converter:
     # initialize a subscriber to recieve messages from a topic named /robot/camera1/image_raw and use callback function to recieve data
     self.image_sub2 = message_filters.Subscriber("/camera2/robot/image_raw",Image)
 
-    #######
+    # initialize a publisher to send the estimated joint values to a topic names joint_states
     self.joints_pub = rospy.Publisher("/robot/joint_states", Float64MultiArray, queue_size=10)
+
+    # initialize spublishers to send the joint values to move the robot joints
     self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
     self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10)
     self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)
-    #######
 
-
+    # access images from each of the two cameras
     self.ts = message_filters.ApproximateTimeSynchronizer([self.image_sub1, self.image_sub2],1,1)
     self.ts.registerCallback(self.callback1)
-    #self.ts.registerCallback(self.callback2)
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
 
-    ########
-
+    # get the current time at start
     self.t0 = rospy.get_time()
     self.cur_time = 0
-
-    ########
 
 
   # Detecting the centre of the green circle
@@ -61,8 +58,12 @@ class image_converter:
       # Obtain the moments of the binary image
       M = cv2.moments(mask)
       # Calculate pixel coordinates for the centre of the blob
-      cx = int(M['m10'] / M['m00'])
-      cy = int(M['m01'] / M['m00'])
+      if M['m00'] != 0:  # check circle has been adequately detected
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+      else:  # if circle has not been adequately detected do not calculate
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
 
@@ -76,8 +77,12 @@ class image_converter:
       # Obtain the moments of the binary image
       M = cv2.moments(mask)
       # Calculate pixel coordinates for the centre of the blob
-      cx = int(M['m10'] / M['m00'])
-      cy = int(M['m01'] / M['m00'])
+      if M['m00'] != 0:  # check circle has been adequately detected
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+      else:  # if circle has not been adequately detected do not calculate
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Detecting the centre of the yellow circle
@@ -90,8 +95,12 @@ class image_converter:
       # Obtain the moments of the binary image
       M = cv2.moments(mask)
       # Calculate pixel coordinates for the centre of the blob
-      cx = int(M['m10'] / M['m00'])
-      cy = int(M['m01'] / M['m00'])
+      if M['m00'] != 0:  # check circle has been adequately detected
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+      else:  # if circle has not been adequately detected do not calculate
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Detecting the centre of the red circle
@@ -103,9 +112,12 @@ class image_converter:
       mask = cv2.dilate(mask, kernel, iterations=3)
       # Obtain the moments of the binary image
       M = cv2.moments(mask)
-      # Calculate pixel coordinates for the centre of the blob
-      cx = int(M['m10'] / M['m00'])
-      cy = int(M['m01'] / M['m00'])
+      if M['m00'] != 0:  # check circle has been adequately detected
+          cx = int(M['m10'] / M['m00'])
+          cy = int(M['m01'] / M['m00'])
+      else:  # if circle has not been adequately detected do not calculate
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Calculate the conversion from pixel to meters
@@ -126,7 +138,7 @@ class image_converter:
     circle1Pos = a * self.detect_blue(image)
     circle2Pos = a * self.detect_green(image)
     circle3Pos = a * self.detect_red(image)
-    # Solve using trigonometry
+    # Calculate each of the joint values
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
     ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
@@ -141,7 +153,7 @@ class image_converter:
     circle1Pos = a * self.detect_blue(image)
     circle2Pos = a * self.detect_green(image)
     circle3Pos = a * self.detect_red(image)
-    # Solve using trigonometry
+    # Calculate each of the joint values
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
     ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
@@ -156,33 +168,35 @@ class image_converter:
       kernel = np.ones((5, 5), np.uint8)
       mask = cv2.dilate(mask, kernel, iterations=3)
 
+      # get contour information from the identified shapes
       contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-
       for cnt in contours:
-        approx = cv2.approxPolyDP(cnt, 0.02* cv2.arcLength(cnt, True), True)
-        if len(approx) < 5:
+        approx = cv2.approxPolyDP(cnt, 0.02* cv2.arcLength(cnt, True), True) # calculate number of points
+        if len(approx) < 6: # if it is a square do not calculate coordinates
           cx = 0.0
           cy = 0.0
 
-        else:
+        else: # if it is a circle calculate coordinates
           # Obtain the moments of the binary image
           M = cv2.moments(cnt)
           # Calculate pixel coordinates for the centre of the blob
-          cx = int(M['m10'] / M['m00'])
-          cy = int(M['m01'] / M['m00'])
+          if M['m00'] != 0:  # check circle has been adequately detected
+              cx = int(M['m10'] / M['m00'])
+              cy = int(M['m01'] / M['m00'])
+          else:  # if circle has not been adequately detected do not calculate
+              cx = ""
+              cy = ""
 
       return np.array([cx, cy])
 
 
-
-
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data, data1):
-    ########
+    # calculate elapsed time since start
     self.cur_time = np.array([rospy.get_time()]) - self.t0
-    ########
-    # Recieve the image
+
+    # Receive the image
     try:
       self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
       self.cv_image2 = self.bridge.imgmsg_to_cv2(data1, "bgr8")
@@ -192,7 +206,7 @@ class image_converter:
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    ########
+    # calculate sinusoidal signals
     x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
     y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
     x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
@@ -201,6 +215,7 @@ class image_converter:
     print('####')
     print('####')
 
+    # pass calculated sinusoidal signals to relevant joints
     self.joint2_act = Float64()
     self.joint2_act.data = np.array(x_2)
     self.joint3_act = Float64()
@@ -209,8 +224,8 @@ class image_converter:
     self.joint4_act.data = np.array(x_4)
     ########
 
-    a = self.detect_joint_angles_cam1(self.cv_image1)
-    b = self.detect_orange_sphere(self.cv_image1)
+    a = self.detect_joint_angles_cam1(self.cv_image1)  # estimate joints 2 and 4 using camera 1
+    b = self.detect_orange_sphere(self.cv_image1)  # estimate orange sphere coordinates using camera 1
 
     cv2.imshow('window1', self.cv_image1)
     cv2.imshow('window2', self.cv_image2)
@@ -218,21 +233,25 @@ class image_converter:
 
     cv2.waitKey(1)
 
+    # pass estimated joint values
     joint2 = a[0]
     joint4 = a[1]
-    d = self.detect_orange_sphere(self.cv_image2)
-    c = self.detect_joint_angles_cam2(self.cv_image2)
+
+    d = self.detect_orange_sphere(self.cv_image2)  # estimate joint 3 using camera 2
+    c = self.detect_joint_angles_cam2(self.cv_image2) # estimate orange sphere coordinates using camera 2
+
+    # pass estimated joint values
     joint3 = c
 
     self.joints = Float64MultiArray()
-    self.joints.data = a[0], c, a[1]
+    self.joints.data = a[0], c, a[1]  # create array of estimated joint values to publish
 
     print("joint array", self.joints)
 
     print("joint 2 %f" % joint2)
     print("joint 3 %f" % joint3)
     print("joint 4 %f" % joint4)
-    #print(self.joints)
+
     print ("orange coord cam 1:", b)
     print("orange coord cam 2:", d)
 
@@ -240,12 +259,13 @@ class image_converter:
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
       self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-      self.joints_pub.publish(self.joints)
-      ########
+      self.joints_pub.publish(self.joints)  # estimated joint values
+
+      #  sinusoidal signal values to move joints
       self.robot_joint2_pub.publish(self.joint2_act)
       self.robot_joint3_pub.publish(self.joint3_act)
       self.robot_joint4_pub.publish(self.joint4_act)
-      ########
+
     except CvBridgeError as e:
       print(e)
 
