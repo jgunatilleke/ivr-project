@@ -11,6 +11,7 @@ from std_msgs.msg import Float64MultiArray, Float64
 from cv_bridge import CvBridge, CvBridgeError
 import message_filters
 
+#import triangulation
 
 class image_converter:
 
@@ -62,8 +63,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = 0
-          cy = 0
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
 
@@ -81,8 +82,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = 0
-          cy = 0
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Detecting the centre of the yellow circle
@@ -99,8 +100,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = 0
-          cy = 0
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Detecting the centre of the red circle
@@ -116,8 +117,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = 0
-          cy = 0
+          cx = ""
+          cy = ""
       return np.array([cx, cy])
 
   # Calculate the conversion from pixel to meters
@@ -140,7 +141,7 @@ class image_converter:
     circle3Pos = a * self.detect_red(image)
     # Calculate each of the joint values
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle2Pos[1]-circle1Pos[1]) - ja1
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
     return np.array([ja2, ja3, ja4])
@@ -155,30 +156,32 @@ class image_converter:
     circle3Pos = a * self.detect_red(image)
     # Calculate each of the joint values
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle2Pos[1]-circle1Pos[1]) - ja1
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
     return np.array([ja2, ja3, ja4])
+    x2 = circle1Pos[0]-circle2Pos[0]
+    return np.array([])
 
   # Detecting the centre of the orange circle
   def detect_orange_sphere(self,image):
       # Isolate the orange colour in the image as a binary image
       mask = cv2.inRange(image, (10, 100, 20), (25, 255, 255))
-      print('mask:', mask)
+      #print('mask:', mask)
       # Applies a dilate that makes the binary region larger
       kernel = np.ones((5, 5), np.uint8)
-      print('kernel:', kernel)
+      #print('kernel:', kernel)
       mask = cv2.dilate(mask, kernel, iterations=3)
-      print('mask2:', mask)
+      #print('mask2:', mask)
 
       # get contour information from the identified shapes
       contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-      print('contours:', contours)
+      #print('contours:', contours)
 
 
       for cnt in contours:
         approx = cv2.approxPolyDP(cnt, 0.02* cv2.arcLength(cnt, True), True) # calculate number of points
-        print('approx:', approx)
+        #print('approx:', approx)
 
         if len(approx) < 6: # if it is a square do not calculate coordinates
           c1 = 0.0
@@ -192,14 +195,97 @@ class image_converter:
               c1 = int(M['m10'] / M['m00'])
               cz = int(M['m01'] / M['m00'])
           else:  # if circle has not been adequately detected do not calculate
-              c1 = 0
-              cz = 0
+              c1 = ""
+              cz = ""
 
-        print('c1, cz:', c1, cz)
-        print('####')
-        print()
+        #print('c1, cz:', c1, cz)
+        #print('####')
+        #print()
 
       return np.array([c1, cz])
+
+  def detect_3d(self, image1, image2):
+    a1 = self.pixel2meter(image1)
+    # Obtain the centre of each coloured blob
+    center1 = a1 * self.detect_yellow(image1)
+    circle1Pos1 = a1 * self.detect_blue(image1)
+    circle2Pos1 = a1 * self.detect_green(image1)
+    circle3Pos1 = a1 * self.detect_red(image1)
+
+    a2 = self.pixel2meter(image2)
+    # Obtain the centre of each coloured blob
+    center2 = a2 * self.detect_yellow(image2)
+    circle1Pos2 = a2 * self.detect_blue(image2)
+    circle2Pos2 = a2 * self.detect_green(image2)
+    circle3Pos2 = a2 * self.detect_red(image2)
+
+    detector = cv2.ORB_create()
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+    kp1,des1 = detector.detectAndCompute(image1,None)
+    kp2,des2 = detector.detectAndCompute(image2,None)
+    matches = bf.match(des1,des2)
+    good = []
+    pts1 = []
+    pts2 = []
+
+    matches = sorted(matches, key = lambda x:x.distance)
+    count = 0
+    for m in matches:
+      count+=1
+      if count < 60:
+        good.append([m])
+        pts2.append(kp2[m.trainIdx].pt)
+        pts1.append(kp1[m.queryIdx].pt)   
+    pts1 = np.float32(pts1)
+    pts2 = np.float32(pts2)
+    
+    F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
+    #print('F: ', F)
+    #print('mask', mask)
+
+    pts1 = pts1[mask.ravel()==1]
+    pts2 = pts2[mask.ravel()==1]
+    E, mask_2 = cv2.findEssentialMat(pts1, pts2, focal=1, pp=(0, 0), method=cv2.FM_LMEDS, prob=0.999, threshold=3.0)
+    print('E: ', E)
+
+    points, R_1, t_1, mask_2 = cv2.recoverPose(E, pts1, pts2,pts2,focal=1, pp=(0, 0), mask = mask_2)
+    print('R_1: ', R_1)
+    print('t_1: ', t_1)
+
+    #R_M = R.from_matrix(R_1)
+    #R_1_E = R_M.as_euler('zyx', degrees=True)
+    K = np.array([[1, 0, 0],
+             [0,1, 0],
+             [0,0,1]])
+    Pr_1 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]])
+    Pr_2 = np.hstack((np.dot(K,R_1),np.dot(K,t_1)))
+    #pts1_t = pts1[:200].T
+    #pts2_t = pts2[:200].T
+    pts1_t = np.array([center1, circle1Pos1, circle2Pos1, circle3Pos1]).T
+    pts2_t = np.array([center2, circle1Pos2, circle2Pos2, circle3Pos2]).T
+
+    points4D = cv2.triangulatePoints(Pr_1,Pr_2,pts1_t, pts2_t)
+    #points4D = cv2.triangulatePoints(Pr_1,Pr_1,pts1_t, pts2_t)
+    #points4D = triangulation.linear_LS_triangulation(Pr_1, pts1_t, Pr_2, pts2_t)
+
+    
+    coordinate_eucl= cv2.convertPointsFromHomogeneous(points4D.T)
+    coordinate_eucl=coordinate_eucl.reshape(-1,3)
+    px,py,pz=coordinate_eucl.T
+    coordP = []
+    for i in range(len(px)):
+      coordP.append([px[i],py[i],pz[i]])
+    print(coordP)
+    #ja1 = np.arctan([coordP[0][0]-coordP[1][0], coordP[0][1]-coordP[1][1], coordP[0][2]-coordP[1][2]])
+    #ja2 = np.arctan([coordP[1][0]-coordP[2][0], coordP[1][1]-coordP[2][1], coordP[1][2]-coordP[2][2]]) - ja1
+    ja1 = np.arctan2(coordP[0][0]-coordP[1][0], coordP[0][2]-coordP[1][2])
+    ja2 = np.arctan2(coordP[1][0]-coordP[2][0], coordP[1][2]-coordP[2][2])-ja1
+
+    print('ja1: ', ja1)
+    print('ja2: ', ja2)
+
+    return True
 
 
   # Recieve data from camera 1, process it, and publish
@@ -219,30 +305,36 @@ class image_converter:
 
     # calculate sinusoidal signals
     x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
-    y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
-    x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
+    #y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
+    #x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
     #print("actual joint positions: ", x_2, y_3, x_4)
+    print("actual joint positions: ", x_2)
+
 
     # pass calculated sinusoidal signals to relevant joints
     self.joint2_act = Float64()
     self.joint2_act.data = np.array(x_2)
-    self.joint3_act = Float64()
-    self.joint3_act.data = np.array(y_3)
-    self.joint4_act = Float64()
-    self.joint4_act.data = np.array(x_4)
+    #self.joint3_act = Float64()
+    #self.joint3_act.data = np.array(y_3)
+    #self.joint4_act = Float64()
+    #self.joint4_act.data = np.array(x_4)
     ########
 
-    #cv2.imshow('window1', self.cv_image1)
-    #cv2.imshow('window2', self.cv_image2)
+    cv2.imshow('window1', self.cv_image1)
+    cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
 
     joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
     joint_est2 = self.detect_joint_angles_cam2(self.cv_image2)
     sphere_est1 = self.detect_orange_sphere(self.cv_image1)
     sphere_est2 = self.detect_orange_sphere(self.cv_image2)
+
     #print('joint estimated from camera1: ', joint_est1)
     #print('joint estimated from camera2: ', joint_est2)
-    print('sphere estimated from cameras: ', sphere_est2[0], sphere_est1[0], sphere_est1[1])
+    #print('sphere estimated from cameras: ', sphere_est2[0], sphere_est1[0], sphere_est1[1])
+    xyz = self.detect_3d(self.cv_image1, self.cv_image2)
+    print(xyz)
+    
     print('####')
     print('####')
     print()
@@ -258,8 +350,8 @@ class image_converter:
 
       #  sinusoidal signal values to move joints
       self.robot_joint2_pub.publish(self.joint2_act)
-      self.robot_joint3_pub.publish(self.joint3_act)
-      self.robot_joint4_pub.publish(self.joint4_act)
+      #self.robot_joint3_pub.publish(self.joint3_act)
+      #self.robot_joint4_pub.publish(self.joint4_act)
 
     except CvBridgeError as e:
       print(e)
