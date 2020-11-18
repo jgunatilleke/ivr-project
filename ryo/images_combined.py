@@ -62,8 +62,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
 
@@ -81,8 +81,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Detecting the centre of the yellow circle
@@ -99,8 +99,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Detecting the centre of the red circle
@@ -116,8 +116,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Calculate the conversion from pixel to meters
@@ -192,8 +192,8 @@ class image_converter:
               c1 = int(M['m10'] / M['m00'])
               cz = int(M['m01'] / M['m00'])
           else:  # if circle has not been adequately detected do not calculate
-              c1 = ""
-              cz = ""
+              c1 = 0
+              cz = 0
 
         print('c1, cz:', c1, cz)
         print('####')
