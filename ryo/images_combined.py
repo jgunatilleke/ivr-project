@@ -141,10 +141,10 @@ class image_converter:
     circle3Pos = a * self.detect_red(image)
     # Calculate each of the joint values
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle2Pos[1]-circle1Pos[1]) - ja1
-    ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
-    ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    return np.array([ja2, ja3, ja4])
+    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja3 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
+    #print(np.array([ja1, ja2, ja3]))
+    return np.array([ja1, ja2, ja3])
 
     # Calculate the relevant joint angles from the image in camera 2
   def detect_joint_angles_cam2(self,image):
@@ -155,13 +155,11 @@ class image_converter:
     circle2Pos = a * self.detect_green(image)
     circle3Pos = a * self.detect_red(image)
     # Calculate each of the joint values
-    ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle2Pos[1]-circle1Pos[1]) - ja1
-    ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
-    ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    return np.array([ja2, ja3, ja4])
-    x2 = circle1Pos[0]-circle2Pos[0]
-    return np.array([])
+    ja1 = np.arctan2(circle1Pos[0]-center[0], center[1] - circle1Pos[1])
+    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja3 = np.arctan2(circle3Pos[0]-circle2Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
+    #print(np.array([ja1, ja2, ja3]))
+    return np.array([ja1, ja2, ja3])
 
   # Detecting the centre of the orange circle
   def detect_orange_sphere(self,image):
@@ -218,40 +216,53 @@ class image_converter:
     circle1Pos2 = a2 * self.detect_blue(image2)
     circle2Pos2 = a2 * self.detect_green(image2)
     circle3Pos2 = a2 * self.detect_red(image2)
+    #print('center1: ', center1)
+    #print('image1', image1)
 
-    detector = cv2.ORB_create()
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    #detector = cv2.ORB_create()
+    detector = cv2.AKAZE_create()
+    #bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
 
     kp1,des1 = detector.detectAndCompute(image1,None)
     kp2,des2 = detector.detectAndCompute(image2,None)
-    matches = bf.match(des1,des2)
+    #matches = bf.match(des1,des2)
+    matches = bf.knnMatch(des1, des2, k=2)
     good = []
     pts1 = []
     pts2 = []
+    #print('matches: ', matches)
+    print('matches: ', len(matches))
 
-    matches = sorted(matches, key = lambda x:x.distance)
+    #matches = sorted(matches, key = lambda x:x.distance)
     count = 0
+    
+    '''
     for m in matches:
       count+=1
       if count < 60:
+    '''   
+    for m, second in matches:
+      if m.distance < second.distance * 0.7:
         good.append([m])
+        #print(m.distance)
         pts2.append(kp2[m.trainIdx].pt)
         pts1.append(kp1[m.queryIdx].pt)   
     pts1 = np.float32(pts1)
     pts2 = np.float32(pts2)
     
     F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
-    #print('F: ', F)
+    print('F: ', F)
     #print('mask', mask)
 
     pts1 = pts1[mask.ravel()==1]
     pts2 = pts2[mask.ravel()==1]
     E, mask_2 = cv2.findEssentialMat(pts1, pts2, focal=1, pp=(0, 0), method=cv2.FM_LMEDS, prob=0.999, threshold=3.0)
-    print('E: ', E)
+    #print('E: ', E)
 
     points, R_1, t_1, mask_2 = cv2.recoverPose(E, pts1, pts2,pts2,focal=1, pp=(0, 0), mask = mask_2)
-    print('R_1: ', R_1)
-    print('t_1: ', t_1)
+    #print('R_1: ', R_1)
+    #print('t_1: ', t_1)
 
     #R_M = R.from_matrix(R_1)
     #R_1_E = R_M.as_euler('zyx', degrees=True)
@@ -276,7 +287,7 @@ class image_converter:
     coordP = []
     for i in range(len(px)):
       coordP.append([px[i],py[i],pz[i]])
-    print(coordP)
+    print('3D coordinates: ', coordP)
     #ja1 = np.arctan([coordP[0][0]-coordP[1][0], coordP[0][1]-coordP[1][1], coordP[0][2]-coordP[1][2]])
     #ja2 = np.arctan([coordP[1][0]-coordP[2][0], coordP[1][1]-coordP[2][1], coordP[1][2]-coordP[2][2]]) - ja1
     ja1 = np.arctan2(coordP[0][0]-coordP[1][0], coordP[0][2]-coordP[1][2])
@@ -305,35 +316,36 @@ class image_converter:
 
     # calculate sinusoidal signals
     x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
-    #y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
-    #x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
-    #print("actual joint positions: ", x_2, y_3, x_4)
-    print("actual joint positions: ", x_2)
+    y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
+    x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
+    print("actual joint positions: ", x_2, y_3, x_4)
 
 
     # pass calculated sinusoidal signals to relevant joints
     self.joint2_act = Float64()
     self.joint2_act.data = np.array(x_2)
-    #self.joint3_act = Float64()
-    #self.joint3_act.data = np.array(y_3)
-    #self.joint4_act = Float64()
-    #self.joint4_act.data = np.array(x_4)
+    self.joint3_act = Float64()
+    self.joint3_act.data = np.array(y_3)
+    self.joint4_act = Float64()
+    self.joint4_act.data = np.array(x_4)
     ########
 
-    cv2.imshow('window1', self.cv_image1)
-    cv2.imshow('window2', self.cv_image2)
+    #cv2.imshow('window1', self.cv_image1)
+    #cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
 
     joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
     joint_est2 = self.detect_joint_angles_cam2(self.cv_image2)
+    print("predicted joint positions: ", joint_est1[1], joint_est2[1], joint_est1[2])
+
+    
     sphere_est1 = self.detect_orange_sphere(self.cv_image1)
     sphere_est2 = self.detect_orange_sphere(self.cv_image2)
 
-    #print('joint estimated from camera1: ', joint_est1)
-    #print('joint estimated from camera2: ', joint_est2)
+    #print('joint estimated from cameras: ', j1_x_est, j2_x_est)
     #print('sphere estimated from cameras: ', sphere_est2[0], sphere_est1[0], sphere_est1[1])
-    xyz = self.detect_3d(self.cv_image1, self.cv_image2)
-    print(xyz)
+    #xyz = self.detect_3d(self.cv_image1, self.cv_image2)
+    #print(xyz)
     
     print('####')
     print('####')
@@ -350,8 +362,8 @@ class image_converter:
 
       #  sinusoidal signal values to move joints
       self.robot_joint2_pub.publish(self.joint2_act)
-      #self.robot_joint3_pub.publish(self.joint3_act)
-      #self.robot_joint4_pub.publish(self.joint4_act)
+      self.robot_joint3_pub.publish(self.joint3_act)
+      self.robot_joint4_pub.publish(self.joint4_act)
 
     except CvBridgeError as e:
       print(e)
