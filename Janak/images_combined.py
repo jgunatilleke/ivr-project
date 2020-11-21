@@ -97,6 +97,7 @@ class image_converter:
         # Calculate pixel coordinates for the centre of the blob from camera 2
             cam2_cx = int(M2['m10'] / M2['m00'])
             cam2_cy = int(M2['m01'] / M2['m00'])
+
             return np.array([cam1_cx, cam2_cx, int((cam1_cy + cam2_cy) / 2)])
 
         else:
@@ -172,8 +173,6 @@ class image_converter:
 
         distance = a * np.sqrt((base[0] - target[0])**2 + (base[1] - target[1])**2 + (base[2] - target[2])**2)
 
-        #distance = a * (base - target)
-
         return distance
 
     # Calculate the relevant joint angles from the image in camera 1
@@ -184,37 +183,17 @@ class image_converter:
         circle1Pos = a * self.detect_blue(image, image1)
         circle2Pos = a * self.detect_green(image, image1)
         circle3Pos = a * self.detect_red(image, image1)
-        # Calculate each of the joint values
-        #ja1 = np.arctan2(center[0] - circle1Pos[0], center[1] - circle1Pos[1], center[2] - circle1Pos[2])
-        #ja2 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[1] - circle2Pos[1], circle1Pos[2] - circle2Pos[2]) - ja1
-        #ja3 = np.arctan2(circle2Pos[0] - circle3Pos[0], circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) - ja2 - ja1
-        #ja4 = np.arctan2(circle2Pos[0] - circle3Pos[0], circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) - ja3 - ja2 - ja1
 
-        ja1 = np.arctan2(center[0], circle1Pos[0]) - np.arctan2(center[1],circle1Pos[1])
-        #ja2 = np.arctan2(circle1Pos[1] - circle2Pos[1], circle1Pos[2] - circle2Pos[2]) - ja1
-        ja2 = np.arctan2(circle1Pos[1],circle2Pos[1]) - np.arctan2(circle1Pos[2],circle2Pos[2]) - ja1
-        ja3 = np.arctan2(circle1Pos[0], circle2Pos[0]) - np.arctan2(circle1Pos[2], circle2Pos[2]) - ja2
-        ja4 = np.arctan2(circle2Pos[1], circle3Pos[1]) - np.arctan2(circle2Pos[2], circle3Pos[2]) - ja1
+        # Calculate each of the joint values
+        ja1 = 0
+        ja2 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2])
+        ja3 = np.arctan2(circle2Pos[1] - circle1Pos[1], circle1Pos[2] - circle2Pos[2])
+        ja4 = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) + ja3
 
         return np.array([ja1, ja2, ja3, ja4])
 
         # Calculate the relevant joint angles from the image in camera 2
 
-    """
-    def detect_joint_angles_cam2(self, image):
-        a = self.pixel2meter(image)
-        # Obtain the centre of each coloured blob
-        center = a * self.detect_yellow(image)
-        circle1Pos = a * self.detect_blue(image) 
-        circle2Pos = a * self.detect_green(image)
-        circle3Pos = a * self.detect_red(image)
-        # Calculate each of the joint values
-        ja1 = np.arctan2(center[0] - circle1Pos[0], center[1] - circle1Pos[1])
-        ja2 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[1] - circle2Pos[1]) - ja1
-        ja3 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[1] - circle2Pos[1]) - ja1
-        ja4 = np.arctan2(circle2Pos[0] - circle3Pos[0], circle2Pos[1] - circle3Pos[1]) - ja2 - ja1
-        return np.array([ja2, ja3, ja4])
-    """
 
     # Detecting the centre of the orange circle
     def detect_orange_sphere(self, image, image1):
@@ -268,6 +247,7 @@ class image_converter:
                 else:  # if circle has not been adequately detected do not calculate
                     cam2_c1 = self.prev_orange[1]
                     cam2_c2 = self.prev_orange[2]
+
 
         return np.array([int(cam1_c1), int(cam2_c1),int((cam1_c2 + cam2_c2)/2)])
 
