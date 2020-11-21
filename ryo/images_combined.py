@@ -47,6 +47,10 @@ class image_converter:
     # get the current time at start
     self.t0 = rospy.get_time()
     self.cur_time = 0
+    
+    self.length_of_bar1 = 0
+    self.length_of_bar2 = 0
+    self.length_of_bar3 = 0
 
 
   # Detecting the centre of the green circle
@@ -63,8 +67,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
 
@@ -82,8 +86,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Detecting the centre of the yellow circle
@@ -100,8 +104,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Detecting the centre of the red circle
@@ -117,8 +121,8 @@ class image_converter:
           cx = int(M['m10'] / M['m00'])
           cy = int(M['m01'] / M['m00'])
       else:  # if circle has not been adequately detected do not calculate
-          cx = ""
-          cy = ""
+          cx = 0
+          cy = 0
       return np.array([cx, cy])
 
   # Calculate the conversion from pixel to meters
@@ -143,8 +147,20 @@ class image_converter:
     ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
     ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
     ja3 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    #print(np.array([ja1, ja2, ja3]))
-    return np.array([ja1, ja2, ja3])
+    
+    ja1_ = np.arccos((center[0]-circle1Pos[0])/self.length_of_bar1)
+    ja2_ = np.arccos((circle1Pos[0]-circle2Pos[0])/self.length_of_bar2) - ja1_
+    ja3_ = np.arccos((circle2Pos[0]-circle3Pos[0])/self.length_of_bar3) - ja2_ - ja1_
+
+    x1 = center[0]-circle1Pos[0]
+    z1 = circle1Pos[1]-circle2Pos[1]
+    x2 = circle1Pos[0]-circle2Pos[0]
+    z2 = circle1Pos[1]-circle2Pos[1]
+    x3 = circle2Pos[0]-circle3Pos[0]
+    z3 = circle2Pos[1]-circle3Pos[1]
+    
+    
+    return np.array([ja1, ja2, ja3]), np.array([ja1_, ja2_, ja3_]), x1, z1, x2, z2, x3, z3
 
     # Calculate the relevant joint angles from the image in camera 2
   def detect_joint_angles_cam2(self,image):
@@ -155,11 +171,22 @@ class image_converter:
     circle2Pos = a * self.detect_green(image)
     circle3Pos = a * self.detect_red(image)
     # Calculate each of the joint values
-    ja1 = np.arctan2(circle1Pos[0]-center[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle2Pos[0]-circle1Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
-    ja3 = np.arctan2(circle3Pos[0]-circle2Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    #print(np.array([ja1, ja2, ja3]))
-    return np.array([ja1, ja2, ja3])
+    ja1 = np.arctan2(center[0]-circle1Pos[0], center[1] - circle1Pos[1])
+    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
+    ja3 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
+
+    ja1_ = np.arccos((circle1Pos[0]-center[0])/self.length_of_bar1)
+    ja2_ = np.arccos((circle2Pos[0]-circle1Pos[0])/self.length_of_bar2) - ja1_
+    ja3_ = np.arccos((circle3Pos[0]-circle2Pos[0])/self.length_of_bar3) - ja2_ - ja1_
+    
+    y1 = center[0]-circle1Pos[0]
+    z1 = circle1Pos[1]-circle2Pos[1]
+    y2 = circle1Pos[0]-circle2Pos[0]
+    z2 = circle1Pos[1]-circle2Pos[1]
+    y3 = circle2Pos[0]-circle3Pos[0]
+    z3 = circle2Pos[1]-circle3Pos[1]
+    
+    return np.array([ja1, ja2, ja3]), np.array([ja1_, ja2_, ja3_]), y1, z1, y2, z2, y3, z3
 
   # Detecting the centre of the orange circle
   def detect_orange_sphere(self,image):
@@ -193,8 +220,8 @@ class image_converter:
               c1 = int(M['m10'] / M['m00'])
               cz = int(M['m01'] / M['m00'])
           else:  # if circle has not been adequately detected do not calculate
-              c1 = ""
-              cz = ""
+              c1 = 0
+              cz = 0
 
         #print('c1, cz:', c1, cz)
         #print('####')
@@ -202,102 +229,28 @@ class image_converter:
 
       return np.array([c1, cz])
 
-  def detect_3d(self, image1, image2):
-    a1 = self.pixel2meter(image1)
+  def calculate_length_of_bars(self, image):
+    a = self.pixel2meter(image)
     # Obtain the centre of each coloured blob
-    center1 = a1 * self.detect_yellow(image1)
-    circle1Pos1 = a1 * self.detect_blue(image1)
-    circle2Pos1 = a1 * self.detect_green(image1)
-    circle3Pos1 = a1 * self.detect_red(image1)
+    center = a * self.detect_yellow(image)
+    circle1Pos = a * self.detect_blue(image)
+    circle2Pos = a * self.detect_green(image)
+    circle3Pos = a * self.detect_red(image)
+    # Calculate each of the joint values
+    length1 = np.sqrt(np.square(center[0]-circle1Pos[0]) + np.square(center[1] - circle1Pos[1]))
+    length2 = np.sqrt(np.square(circle1Pos[0]-circle2Pos[0]) + np.square(circle1Pos[1] - circle2Pos[1]))
+    length3 = np.sqrt(np.square(circle2Pos[0]-circle3Pos[0]) + np.square(circle2Pos[1] - circle3Pos[1]))
+    return length1, length2, length3
 
-    a2 = self.pixel2meter(image2)
-    # Obtain the centre of each coloured blob
-    center2 = a2 * self.detect_yellow(image2)
-    circle1Pos2 = a2 * self.detect_blue(image2)
-    circle2Pos2 = a2 * self.detect_green(image2)
-    circle3Pos2 = a2 * self.detect_red(image2)
-    #print('center1: ', center1)
-    #print('image1', image1)
-
-    #detector = cv2.ORB_create()
-    detector = cv2.AKAZE_create()
-    #bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-
-    kp1,des1 = detector.detectAndCompute(image1,None)
-    kp2,des2 = detector.detectAndCompute(image2,None)
-    #matches = bf.match(des1,des2)
-    matches = bf.knnMatch(des1, des2, k=2)
-    good = []
-    pts1 = []
-    pts2 = []
-    #print('matches: ', matches)
-    print('matches: ', len(matches))
-
-    #matches = sorted(matches, key = lambda x:x.distance)
-    count = 0
-    
-    '''
-    for m in matches:
-      count+=1
-      if count < 60:
-    '''   
-    for m, second in matches:
-      if m.distance < second.distance * 0.7:
-        good.append([m])
-        #print(m.distance)
-        pts2.append(kp2[m.trainIdx].pt)
-        pts1.append(kp1[m.queryIdx].pt)   
-    pts1 = np.float32(pts1)
-    pts2 = np.float32(pts2)
-    
-    F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
-    print('F: ', F)
-    #print('mask', mask)
-
-    pts1 = pts1[mask.ravel()==1]
-    pts2 = pts2[mask.ravel()==1]
-    E, mask_2 = cv2.findEssentialMat(pts1, pts2, focal=1, pp=(0, 0), method=cv2.FM_LMEDS, prob=0.999, threshold=3.0)
-    #print('E: ', E)
-
-    points, R_1, t_1, mask_2 = cv2.recoverPose(E, pts1, pts2,pts2,focal=1, pp=(0, 0), mask = mask_2)
-    #print('R_1: ', R_1)
-    #print('t_1: ', t_1)
-
-    #R_M = R.from_matrix(R_1)
-    #R_1_E = R_M.as_euler('zyx', degrees=True)
-    K = np.array([[1, 0, 0],
-             [0,1, 0],
-             [0,0,1]])
-    Pr_1 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]])
-    Pr_2 = np.hstack((np.dot(K,R_1),np.dot(K,t_1)))
-    #pts1_t = pts1[:200].T
-    #pts2_t = pts2[:200].T
-    pts1_t = np.array([center1, circle1Pos1, circle2Pos1, circle3Pos1]).T
-    pts2_t = np.array([center2, circle1Pos2, circle2Pos2, circle3Pos2]).T
-
-    points4D = cv2.triangulatePoints(Pr_1,Pr_2,pts1_t, pts2_t)
-    #points4D = cv2.triangulatePoints(Pr_1,Pr_1,pts1_t, pts2_t)
-    #points4D = triangulation.linear_LS_triangulation(Pr_1, pts1_t, Pr_2, pts2_t)
-
-    
-    coordinate_eucl= cv2.convertPointsFromHomogeneous(points4D.T)
-    coordinate_eucl=coordinate_eucl.reshape(-1,3)
-    px,py,pz=coordinate_eucl.T
-    coordP = []
-    for i in range(len(px)):
-      coordP.append([px[i],py[i],pz[i]])
-    print('3D coordinates: ', coordP)
-    #ja1 = np.arctan([coordP[0][0]-coordP[1][0], coordP[0][1]-coordP[1][1], coordP[0][2]-coordP[1][2]])
-    #ja2 = np.arctan([coordP[1][0]-coordP[2][0], coordP[1][1]-coordP[2][1], coordP[1][2]-coordP[2][2]]) - ja1
-    ja1 = np.arctan2(coordP[0][0]-coordP[1][0], coordP[0][2]-coordP[1][2])
-    ja2 = np.arctan2(coordP[1][0]-coordP[2][0], coordP[1][2]-coordP[2][2])-ja1
-
-    print('ja1: ', ja1)
-    print('ja2: ', ja2)
-
-    return True
-
+  def update_length(self, length0, length1, length2):
+    if length1 > length2:
+      length_candidate = length1
+    else:
+      length_candidate = length2
+    if length_candidate > length0:
+      return length_candidate
+    else:
+      return length0
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data, data1):
@@ -333,10 +286,29 @@ class image_converter:
     #cv2.imshow('window1', self.cv_image1)
     #cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
+    
+    
+    length1_1, length2_1, length3_1 = self.calculate_length_of_bars(self.cv_image1)
+    length1_2, length2_2, length3_2 = self.calculate_length_of_bars(self.cv_image2)
+    self.length_of_bar1 = self.update_length(self.length_of_bar1, length1_1, length1_2)
+    self.length_of_bar2 = self.update_length(self.length_of_bar2, length2_1, length2_2)
+    self.length_of_bar3 = self.update_length(self.length_of_bar3, length3_1, length3_2)
+    print('length: ', self.length_of_bar1, self.length_of_bar2, self.length_of_bar3)
 
-    joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
-    joint_est2 = self.detect_joint_angles_cam2(self.cv_image2)
-    print("predicted joint positions: ", joint_est1[1], joint_est2[1], joint_est1[2])
+    joint_est1, joint_est1_, x1, z11, x2, z21, x3, z31 = self.detect_joint_angles_cam1(self.cv_image1)
+    joint_est2, joint_est2_, y1, z12, y2, z22, y3, z32 = self.detect_joint_angles_cam2(self.cv_image2)
+    
+    est_ja1_1 = np.arctan2(x1, 0.5*(z11+z12))
+    est_ja2_1 = np.arctan2(x2, 0.5*(z21+z22)) - est_ja1_1
+    est_ja3_1 = np.arctan2(x3, 0.5*(z31+z32)) - est_ja2_1 - est_ja1_1
+    est_ja1_2 = np.arctan2(y1, 0.5*(z11+z12))
+    est_ja2_2 = np.arctan2(y2, 0.5*(z21+z22)) - est_ja1_2
+    est_ja3_2 = np.arctan2(y3, 0.5*(z31+z32)) - est_ja2_2 - est_ja1_2
+
+    
+    print("predicted joint positions1: ", joint_est1[1], joint_est2[1], joint_est1[2])
+    print("predicted joint positions2: ", joint_est1_[1], joint_est2_[1], joint_est1_[2])
+    print("predicted joint positions3: ", est_ja2_1, est_ja2_2, est_ja3_1)
 
     
     sphere_est1 = self.detect_orange_sphere(self.cv_image1)
