@@ -188,7 +188,7 @@ class image_converter:
         ja1 = 0
         ja2 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2])
         ja3 = np.arctan2(circle2Pos[1] - circle1Pos[1], circle1Pos[2] - circle2Pos[2])
-        ja4 = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) + ja3
+        ja4 = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) + ja3 +ja2
 
         return np.array([ja1, ja2, ja3, ja4])
 
@@ -266,7 +266,7 @@ class image_converter:
     # Recieve data from camera 1, process it, and publish
     def callback1(self, data, data1):
         # calculate elapsed time since start
-        #self.cur_time = np.array([rospy.get_time()]) - self.t0
+        self.cur_time = np.array([rospy.get_time()]) - self.t0
 
         # Receive the image
         try:
@@ -287,18 +287,18 @@ class image_converter:
         # cv2.imwrite('image_copy.png', cv_image)
 
         # calculate sinusoidal signals
-        #x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
-        #y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
-        #x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
-        # print("actual joint positions: ", x_2, y_3, x_4)
+        x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
+        y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
+        x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
+        print("actual joint positions: ", x_2, y_3, x_4)
 
         # pass calculated sinusoidal signals to relevant joints
-        #self.joint2_act = Float64()
-        #self.joint2_act.data = np.array(x_2)
-        #self.joint3_act = Float64()
-        #self.joint3_act.data = np.array(y_3)
-        #self.joint4_act = Float64()
-        #self.joint4_act.data = np.array(x_4)
+        self.joint2_act = Float64()
+        self.joint2_act.data = np.array(x_2)
+        self.joint3_act = Float64()
+        self.joint3_act.data = np.array(y_3)
+        self.joint4_act = Float64()
+        self.joint4_act.data = np.array(x_4)
         ########
 
         #test_green = self.detect_green(self.cv_image1, self.cv_image2)
@@ -307,10 +307,10 @@ class image_converter:
         #print("Orange sphere actual position: ", self.target_x, self.target_y, self.target_z)
 
         calc_target = self.detect_orange_sphere(self.cv_image1, self.cv_image2)
-        print("Estimated orange sphere positions:", calc_target, "\n")
+        #print("Estimated orange sphere positions:", calc_target, "\n")
 
         dis_orange = self.distance_basetotarget(self.cv_image1, self.cv_image2)
-        print ("Distance from base to orange sphere", dis_orange, "\n")
+        #print ("Distance from base to orange sphere", dis_orange, "\n")
 
         cv2.circle(self.cv_image1,(calc_target[0], calc_target[2]), 10, (0,0,0), -1)
         cv2.circle(self.cv_image2, (calc_target[1], calc_target[2]), 10, (0,0,0), -1)
@@ -329,7 +329,7 @@ class image_converter:
 
         joints = self.detect_joint_angles(self.cv_image1,self.cv_image2)
 
-        print ("Estimated joint angles", joints, "\n")
+        print ("Estimated joint angles", joints[1], joints[2], joints[3], "\n")
 
 
         #joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
@@ -339,7 +339,7 @@ class image_converter:
         # print('joint estimated from camera1: ', joint_est1)
         # print('joint estimated from camera2: ', joint_est2)
         #print('sphere estimated from cameras: ', sphere_est2[0], sphere_est1[0], sphere_est1[1])
-        #print('####')
+
         #print('####')
         #print()
 
@@ -353,9 +353,9 @@ class image_converter:
             #self.joints_pub.publish(self.joints)  # estimated joint values
 
             #  sinusoidal signal values to move joints
-            #self.robot_joint2_pub.publish(self.joint2_act)
-            #self.robot_joint3_pub.publish(self.joint3_act)
-            #self.robot_joint4_pub.publish(self.joint4_act)
+            self.robot_joint2_pub.publish(self.joint2_act)
+            self.robot_joint3_pub.publish(self.joint3_act)
+            self.robot_joint4_pub.publish(self.joint4_act)
 
         except CvBridgeError as e:
             print(e)
