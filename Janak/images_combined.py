@@ -186,9 +186,12 @@ class image_converter:
 
         # Calculate each of the joint values
         ja1 = 0
-        ja2 = np.arctan2(circle1Pos[1] - circle2Pos[1], circle1Pos[2] - circle2Pos[2])
-        ja3 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2])
-        ja4 = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) - ja2
+        #ja2 = np.arctan2(circle1Pos[1] - circle2Pos[1], circle1Pos[2] - circle2Pos[2])
+        #ja3 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2])
+        #ja4 = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) - ja2
+        ja2 = np.arctan2(circle2Pos[1] - circle1Pos[1], circle1Pos[2] - circle2Pos[2])
+        ja3 = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2]) - 0.1 # remove 0.2 bias
+        ja4 = np.arctan2(circle3Pos[1] - circle2Pos[1], circle2Pos[2] - circle3Pos[2]) - ja2 + 0.3 # remove 0.3 bias
 
         return np.array([ja1, ja2, ja3, ja4])
 
