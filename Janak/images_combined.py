@@ -210,8 +210,8 @@ class image_converter:
             approx = cv2.approxPolyDP(cnt, 0.02 * cv2.arcLength(cnt, True), True)  # calculate number of points
 
             if len(approx) < 6:  # if it is a square do not calculate coordinates
-                c1 = 0.0
-                cz = 0.0
+                cam1_c1 = 0.0
+                cam1_c2 = 0.0
 
             else:  # if it is a circle calculate coordinates
                 # Obtain the moments of the binary image
