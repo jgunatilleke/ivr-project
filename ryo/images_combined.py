@@ -192,7 +192,7 @@ class image_converter:
         j3_x = np.arctan2(circle2Pos[0] - circle3Pos[0], circle2Pos[2] - circle3Pos[2]) - j1_x - j2_x
         j3_y = np.arctan2(circle2Pos[1] - circle3Pos[1], circle2Pos[2] - circle3Pos[2]) - j1_y - j2_y
         print('arctan: ', j2_x, j2_y, j3_x)
-        
+
         c1_x = np.arccos((center[0] - circle1Pos[0])/2.5)
         c1_y = np.arccos((center[1] - circle1Pos[1])/2.5)
         c2_x = np.arccos((circle1Pos[0] - circle2Pos[0])/3.5)
@@ -201,12 +201,19 @@ class image_converter:
         c3_y = np.arccos((circle2Pos[1] - circle3Pos[1])/3)
         print('arccos: ', c2_x, c2_y, c3_x)
 
-
         ja1 = np.arctan2(center[0], circle1Pos[0]) - np.arctan2(center[1],circle1Pos[1])
         #ja2 = np.arctan2(circle1Pos[1] - circle2Pos[1], circle1Pos[2] - circle2Pos[2]) - ja1
         ja2 = np.arctan2(circle1Pos[1],circle2Pos[1]) - np.arctan2(circle1Pos[2],circle2Pos[2]) - ja1
         ja3 = np.arctan2(circle1Pos[0], circle2Pos[0]) - np.arctan2(circle1Pos[2], circle2Pos[2]) - ja2
         ja4 = np.arctan2(circle2Pos[1], circle3Pos[1]) - np.arctan2(circle2Pos[2], circle3Pos[2]) - ja1
+        print('arctan2: ', ja2, ja3, ja4)
+
+
+        ja1_ = 0
+        ja2_ = np.arctan2(circle2Pos[1] - circle1Pos[1], circle1Pos[2] - circle2Pos[2])
+        ja3_ = np.arctan2(circle1Pos[0] - circle2Pos[0], circle1Pos[2] - circle2Pos[2]) - 0.1 # remove 0.2 bias
+        ja4_ = np.arctan2(circle3Pos[1] - circle2Pos[1], circle2Pos[2] - circle3Pos[2]) - ja2_ + 0.3 # remove 0.3 bias
+        print('arctan3: ', ja2_, ja3_, ja4_)
 
         return np.array([ja1, ja2, ja3, ja4])
 
@@ -366,7 +373,7 @@ class image_converter:
 
         joints = self.detect_joint_angles(self.cv_image1,self.cv_image2)
 
-        print ("Estimated joint angles", joints, "\n")
+        #print ("Estimated joint angles", joints, "\n")
 
 
         #joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
@@ -384,10 +391,10 @@ class image_converter:
         self.joints.data = joints[1], joints[2], joints[3]
 
 
-        x_e = self.forward_kinematics(self.cv_image1, self.cv_image2)
-        x_e_image = self.detect_end_effector(self.cv_image1, self.cv_image1)
-        print('forward kinematics: ', x_e)
-        print('detect from yellow: ', x_e_image)
+        #x_e = self.forward_kinematics(self.cv_image1, self.cv_image2)
+        #x_e_image = self.detect_end_effector(self.cv_image1, self.cv_image1)
+        #print('forward kinematics: ', x_e)
+        #print('detect from yellow: ', x_e_image)
 
 
         # Publish the results
