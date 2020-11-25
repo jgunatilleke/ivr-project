@@ -28,13 +28,8 @@ class image_converter:
         # initialize a subscriber to recieve messages from a topic named /robot/camera1/image_raw and use callback function to recieve data
         self.image_sub2 = message_filters.Subscriber("/camera2/robot/image_raw", Image)
 
-        # Subscribe to trajectory positions published by target_move.py
-        self.target_joint1_pub = rospy.Subscriber("/target/x_position_controller/command", Float64, self.callback2)
-        self.target_joint2_pub = rospy.Subscriber("/target/y_position_controller/command", Float64, self.callback3)
-        self.target_joint3_pub = rospy.Subscriber("/target/z_position_controller/command", Float64, self.callback4)
-
         # initialize a publisher to send the estimated joint values to a topic names joint_states
-        self.joints_pub = rospy.Publisher("/robot/joint_states", Float64MultiArray, queue_size=10)
+        self.joints_pub = rospy.Publisher("joint_positions", Float64MultiArray, queue_size=10)
 
         # initialize spublishers to send the joint values to move the robot joints
         self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
@@ -53,20 +48,6 @@ class image_converter:
         self.cur_time = 0
 
 
-    # Get subscriber data
-    def callback2(self, data):
-        self.target_x = data.data
-
-
-    # Get subscriber data
-    def callback3(self, data):
-        self.target_y = data.data
-
-
-    # Get subscriber data
-    def callback4(self, data):
-        self.target_z = data.data
-
     # Detecting the centre - test using chamfer matching
     def detect_black_spheres_test(self, image, image1):
 
@@ -76,60 +57,62 @@ class image_converter:
         mask1 = cv2.inRange(image, (0, 0, 0), (180, 255, 5))
         mask1 = cv2.threshold(mask1, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
-        # fill the contours
-        contours1 = cv2.findContours(mask1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours1 = contours1[0] if len(contours1) == 2 else contours1[1]
+        # fill the black contour white
+        contours1, _ = cv2.findContours(mask1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        #contours1 = contours1[0]
         for cnt1 in contours1:
             cv2.drawContours(mask1, [cnt1], -1, (255, 255, 255), -1)
 
-        # Morph open
+        # Morph open - erosion followed by dilation to remove noise
         kernel_m1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         morph_open1 = cv2.morphologyEx(mask1, cv2.MORPH_OPEN, kernel_m1, iterations=3)
+
+        # Chamfer matching with smaller circle
 
         template1 = cv2.imread('template4.png', 0)
         w, h = template1.shape[::-1]
 
         results1 = cv2.matchTemplate(morph_open1, template1, cv2.TM_CCOEFF_NORMED)
-        threshold1 = 0.54
+        threshold1 = 0.56
         location1 = np.where(results1 >= threshold1)
 
         for pt in zip(*location1[::-1]):
-            cv2.rectangle(image, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1) ### test changed from 2 to -1 to fill
+            cv2.rectangle(image, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1) # draw filled rectangles to enable moments and centroid calculation
+
+        # Chamfer matching with larger circle
 
         template2 = cv2.imread('test1.png', 0)
         w, h = template2.shape[::-1]
 
         results2 = cv2.matchTemplate(morph_open1, template2, cv2.TM_CCOEFF_NORMED)
-        threshold2 = 0.54
+        threshold2 = 0.76
         location2 = np.where(results2 >= threshold2)
 
         for pt in zip(*location2[::-1]):
-            cv2.rectangle(image, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1) ### test changed from 2 to -1 to fill
-        #### test - count contours
+            cv2.rectangle(image, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1) # draw filled rectangles to enable moments and centroid calculation
 
-        #imagec1 = cv2.inRange(image, (0, 0, 0), (180, 255, 5))
+
         imagec1 = cv2.inRange(image, (0, 0, 100), (0, 0, 255)) # filter red
         imagec1 = cv2.threshold(imagec1, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         i = 0
-        cam1_c1 = list(range(20))
-        cam1_c2 = list(range(20))
+        cam1_c1 = list(range(10))
+        cam1_c2 = list(range(10))
 
         contours1, _ = cv2.findContours(imagec1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         for cnt1 in contours1:
+            while i <= 3:
+                M1 = cv2.moments(cnt1)
+                # Calculate pixel coordinates for the centre of the blob
+                if M1['m00'] != 0:  # check circle has been adequately detected
+                    cam1_c1[i] = int(M1['m10'] / M1['m00'])
+                    cam1_c2[i] = int(M1['m01'] / M1['m00'])
+                else:  # if circle has not been adequately detected do not calculate
+                    cam1_c1[i] = self.prev_black[1][i]  # assign previously calculated y value
+                    cam1_c2[i] = self.prev_black[2][i]  # assign previously calculated z value
+                i = i + 1
 
-            M1 = cv2.moments(cnt1)
-            # Calculate pixel coordinates for the centre of the blob
-            if M1['m00'] != 0:  # check circle has been adequately detected
-                cam1_c1[i] = int(M1['m10'] / M1['m00'])
-                cam1_c2[i] = int(M1['m01'] / M1['m00'])
-            else:  # if circle has not been adequately detected do not calculate
-                cam1_c1[i] = 0  # self.prev_orange[0] ### NEED TO ERROR TRAP PROPERLY LATER
-                cam1_c2[i] = 0  # self.prev_orange[2] ### NEED TO ERROR TRAP PROPERLY LATER
-            i = i + 1
-
-        #print ("Camera 1", cam1_c1[0], cam1_c2[0],cam1_c1[1], cam1_c2[1],cam1_c1[2], cam1_c2[2],cam1_c1[3], cam1_c2[3])
 
         ### Camera 2
 
@@ -137,73 +120,95 @@ class image_converter:
         mask2 = cv2.inRange(image1, (0, 0, 0), (180, 255, 5))
         mask2 = cv2.threshold(mask2, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
-        # fill the contours
-        contours2 = cv2.findContours(mask2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours2 = contours2[0] if len(contours2) == 2 else contours2[1]
+        # fill the black contour white
+        contours2, _ = cv2.findContours(mask2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for cnt2 in contours2:
             cv2.drawContours(mask2, [cnt2], -1, (255, 255, 255), -1)
 
-        # Morph open
+        # Morph open - erosion followed by dilation to remove noise
         kernel_m2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         morph_open2 = cv2.morphologyEx(mask2, cv2.MORPH_OPEN, kernel_m2, iterations=3)
+
+        # Chamfer matching with smaller circle
 
         template1 = cv2.imread('template4.png', 0)
         w, h = template1.shape[::-1]
 
         results1 = cv2.matchTemplate(morph_open2, template1, cv2.TM_CCOEFF_NORMED)
-        threshold1 = 0.54
+        threshold1 = 0.56 # threshold adjusted to optimise detection
         location1 = np.where(results1 >= threshold1)
 
         for pt in zip(*location1[::-1]):
-            cv2.rectangle(image1, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1)  ### test changed from 2 to -1 to fill
+            cv2.rectangle(image1, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1)  # draw filled rectangles to enable moments and centroid calculation
+
+        # Chamfer matching with larger circle
 
         template2 = cv2.imread('test1.png', 0)
         w, h = template2.shape[::-1]
 
         results2 = cv2.matchTemplate(morph_open2, template2, cv2.TM_CCOEFF_NORMED)
-        threshold2 = 0.54
+        threshold2 = 0.76 # threshold adjusted to optimise detection
         location2 = np.where(results2 >= threshold2)
 
         for pt in zip(*location2[::-1]):
-            cv2.rectangle(image1, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1)  ### test changed from 2 to -1 to fill
-        #### test - count contours
+            cv2.rectangle(image1, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), -1)  # draw filled rectangles to enable moments and centroid calculation
 
-        # imagec1 = cv2.inRange(image, (0, 0, 0), (180, 255, 5))
-        imagec2 = cv2.inRange(image1, (0, 0, 100), (0, 0, 255))  # filter red
+        imagec2 = cv2.inRange(image1, (0, 0, 100), (0, 0, 255))  # filter red for moments
         imagec2 = cv2.threshold(imagec2, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         j = 0
-        cam2_c1 = list(range(20))
-        cam2_c2 = list(range(20))
+        cam2_c1 = list(range(10))
+        cam2_c2 = list(range(10))
 
         contours2, _ = cv2.findContours(imagec2, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         for cnt2 in contours2:
-
-            M2 = cv2.moments(cnt2)
-            # Calculate pixel coordinates for the centre of the blob
-            if M1['m00'] != 0:  # check circle has been adequately detected
-                cam2_c1[j] = int(M2['m10'] / M2['m00'])
-                cam2_c2[j] = int(M2['m01'] / M2['m00'])
-            else:  # if circle has not been adequately detected do not calculate
-                cam2_c1[j] = 0  # self.prev_orange[0] ### NEED TO ERROR TRAP PROPERLY LATER
-                cam2_c2[j] = 0  # self.prev_orange[2] ### NEED TO ERROR TRAP PROPERLY LATER
-            j = j + 1
+            #while j <= 3:
+                M2 = cv2.moments(cnt2)
+                # Calculate pixel coordinates for the centre of the blob
+                if M2['m00'] != 0:  # check circle has been adequately detected
+                    cam2_c1[j] = int(M2['m10'] / M2['m00'])
+                    cam2_c2[j] = int(M2['m01'] / M2['m00'])
+                else:  # if circle has not been adequately detected do not calculate
+                    cam2_c1[j] = self.prev_black[0][j]  # assign previously calculated x value
+                    cam2_c2[j] = self.prev_black[2][j]  # assign previously calculated z value
+                j = j + 1
 
         #print("Camera 2", cam2_c1[0], cam2_c2[0], cam2_c1[1], cam2_c2[1], cam2_c1[2], cam2_c2[2], cam2_c1[3], cam2_c2[3])
 
         cv2.imshow("Camera1", image)
         cv2.imshow("Camera2", image1)
-        #cv2.imwrite('templatecam2.png',morph_open2)
+        #cv2.imwrite('templatecam1.png',morph_open1)
 
         cam12_c3 = list(range(4))
 
         for index in range(4):
             cam12_c3[index] = int((cam1_c2[index] + cam2_c2[index]) / 2)
 
-        return(cam1_c1, cam2_c1, cam12_c3)
+        return(cam2_c1, cam1_c1, cam12_c3)
 
-    # Recieve data from camera 1, process it, and publish
+    def pixel2meter(self, image, image1):
+        # Obtain the centre of each joint
+        circles = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
+        dist = np.sqrt((circles[0][0] - circles[0][1])**2 + (circles[1][0] - circles[1][1])**2 + (circles[2][0] - circles[2][1])**2)
+        return 2.5 / dist
+
+    # Calculate the relevant joint angles from the image in camera 1 and 2
+    def detect_joint_angles(self, image, image1):
+        a = self.pixel2meter(image, image1)
+        # Obtain the centre of each joint
+        circles = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
+
+        # Calculate each of the joint values
+        ja1 = 0
+        ja2 = np.arctan2(circles[0][3] - circles[0][2], circles[2][1] - circles[2][2])
+        ja3 = np.arctan2(circles[1][1] - circles[1][2], circles[2][1] - circles[2][2])
+        ja4 = np.arctan2(circles[0][3] - circles[0][2], circles[2][2] - circles[2][3]) - ja2
+
+        return np.array([ja1, ja2, ja3, ja4])
+
+
+    # Recieve data from camera 1 and 2, process it, and publish
     def callback1(self, data, data1):
 
         # Receive the image
@@ -215,33 +220,7 @@ class image_converter:
 
         # get values for blob positions to use if blob cannot be seen later
 
-        #self.prev_yellow = self.detect_yellow(self.cv_image1, self.cv_image2)
-        #self.prev_blue = self.detect_blue(self.cv_image1, self.cv_image2)
-        #self.prev_green = self.detect_green(self.cv_image1, self.cv_image2)
-        #self.prev_red = self.detect_red(self.cv_image1, self.cv_image2)
-        #self.prev_orange = self.detect_orange_sphere(self.cv_image1, self.cv_image2)
-
-        # Uncomment if you want to save the image
-        # cv2.imwrite('image_copy.png', cv_image)
-
-        #bottom_circle_positions_x, bottom_circle_positions_y, bottom_circle_positions_z = self.detect_black_spheres_initialYB(
-        #    self.cv_image1,
-        #    self.cv_image2)
-        #print("YB-Circle 1 position: ", bottom_circle_positions_x[0], bottom_circle_positions_y[0],
-        #      bottom_circle_positions_z[0])
-        #print("YB-Circle 2 position: ", bottom_circle_positions_x[1], bottom_circle_positions_y[1],
-        #      bottom_circle_positions_z[1])
-
-        #initial_circle_positions_x, initial_circle_positions_y, initial_circle_positions_z = self.detect_black_spheres_initialGR(
-        #    self.cv_image1,
-        #    self.cv_image2)
-        #print("GR-Circle 1 position: ", initial_circle_positions_x[0], initial_circle_positions_y[0],
-        #      initial_circle_positions_z[0])
-        #print("GR-Circle 2 position: ", initial_circle_positions_x[1], initial_circle_positions_y[1],
-        #      initial_circle_positions_z[1])
-        #print("GR-Circle 3 position: ", initial_circle_positions_x[2], initial_circle_positions_y[2],
-        #      initial_circle_positions_z[2])
-
+        self.prev_black = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
 
         # calculate elapsed time since start
         self.cur_time = np.array([rospy.get_time()]) - self.t0
@@ -250,7 +229,7 @@ class image_converter:
         x_2 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 15)
         y_3 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 18)
         x_4 = (np.pi / 2) * np.sin(self.cur_time * np.pi / 20)
-        # print("actual joint positions: ", x_2, y_3, x_4)
+        print("actual joint positions: ", x_2, y_3, x_4)
 
         # pass calculated sinusoidal signals to relevant joints
         self.joint2_act = Float64()
@@ -261,35 +240,28 @@ class image_converter:
         self.joint4_act.data = np.array(x_4)
         ########
 
-        #self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
 
-        #cv2.imshow('window1', self.cv_image1)
-        #cv2.imshow('window2', self.cv_image2)
+
+
+
+        #circle_positions_x, circle_positions_y, circle_positions_z = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
+        #print("Circle 1 position: ", circle_positions_x[0], circle_positions_y[0], circle_positions_z[0])
+        #print("Circle 2 position: ", circle_positions_x[1], circle_positions_y[1], circle_positions_z[1])
+        #print("Circle 3 position: ", circle_positions_x[2], circle_positions_y[2], circle_positions_z[2])
+        #print("Circle 4 position: ", circle_positions_x[3], circle_positions_y[3], circle_positions_z[3])
+
+
+        self.joints = self.detect_joint_angles(self.cv_image1,self.cv_image2)
+
+        print ("Estimated joint angles", self.joints[1], self.joints[2], self.joints[3], "\n")
+
+        self.joints_p = Float64MultiArray()
+        self.joints_p.data = self.joints
+
+        #self.joints_p = Float64MultiArray()
+        #self.joints_p.data = self.joints[1], self.joints[2], self.joints[3]
+
         cv2.waitKey(1)
-
-        #self.detect_circles(self.cv_image1)
-
-        circle_positions_x, circle_positions_y, circle_positions_z = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
-        print("Circle 1 position: ", circle_positions_x[0], circle_positions_y[0], circle_positions_z[0])
-        print("Circle 2 position: ", circle_positions_x[1], circle_positions_y[1], circle_positions_z[1])
-        print("Circle 3 position: ", circle_positions_x[2], circle_positions_y[2], circle_positions_z[2])
-        print("Circle 4 position: ", circle_positions_x[3], circle_positions_y[3], circle_positions_z[3])
-
-        #joints = self.detect_joint_angles(self.cv_image1,self.cv_image2)
-
-        #print ("Estimated joint angles", joints[1], joints[2], joints[3], "\n")
-
-
-        #joint_est1 = self.detect_joint_angles_cam1(self.cv_image1)
-        #joint_est2 = self.detect_joint_angles_cam2(self.cv_image2)
-        #sphere_est1 = self.detect_orange_sphere(self.cv_image1)
-        #sphere_est2 = self.detect_orange_sphere(self.cv_image2)
-        # print('joint estimated from camera1: ', joint_est1)
-        # print('joint estimated from camera2: ', joint_est2)
-        #print('sphere estimated from cameras: ', sphere_est2[0], sphere_est1[0], sphere_est1[1])
-
-        #print('####')
-        #print()
 
         #self.joints = Float64MultiArray()
         #self.joints.data = joint_est2[0], joint_est1[1], joint_est2[2]
@@ -298,7 +270,7 @@ class image_converter:
         try:
             self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
             self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-            #self.joints_pub.publish(self.joints)  # estimated joint values
+            self.joints_pub.publish(self.joints_p)  # estimated joint values
 
             #  sinusoidal signal values to move joints
             self.robot_joint2_pub.publish(self.joint2_act)
