@@ -37,6 +37,7 @@ class image_converter:
         self.joints_pub = rospy.Publisher("/robot/joint_states", Float64MultiArray, queue_size=10)
 
         # initialize spublishers to send the joint values to move the robot joints
+        self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
         self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
         self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10)
         self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)
@@ -51,6 +52,19 @@ class image_converter:
         # get the current time at start
         self.t0 = rospy.get_time()
         self.cur_time = 0
+        self.time_trajectory = rospy.get_time()
+        
+        self.time_previous_step = np.array([rospy.get_time()], dtype='float64')     
+        self.time_previous_step2 = np.array([rospy.get_time()], dtype='float64')   
+        # initialize error and derivative of error for trajectory tracking  
+        self.error = np.array([0.0,0.0,0.0], dtype='float64')
+        self.error_d = np.array([0.0,0.0,0.0], dtype='float64')
+        
+        self.previous_predicted_angles = np.array([-0.01,-0.01,-0.01,-0.01], dtype='float64')
+        self.previous_predicted_coordinates = np.array([-0.01,-0.01,-0.01], dtype='float64')
+
+        self.trajectory_pub = rospy.Publisher("trajectory",Float64MultiArray, queue_size=10)
+
 
     # Detecting the centre of the green circle
     def detect_green(self, image, image1):
@@ -229,7 +243,7 @@ class image_converter:
     # Calculate the forward kinematics
     def forward_kinematics(self, image, image1):
           joints = self.detect_joint_angles(image, image1)
-          '''
+          
           end_effector = np.array([3.5 * (np.cos(joints[0]) * np.sin(joints[2]) + np.sin(joints[0]) * np.sin(joints[1]) * np.cos(joints[2])) +
                                    3.0 * (np.sin(joints[0]) * np.cos(joints[1]) * np.sin(joints[3]) + (np.cos(joints[0]) * np.sin(joints[2]) + np.sin(joints[0]) * np.sin(joints[1]) * np.cos(joints[2])) * np.cos(joints[3])),
                                    3.5 * (np.sin(joints[0]) * np.sin(joints[2]) - np.cos(joints[0]) * np.sin(joints[1]) * np.cos(joints[2])) +
@@ -237,8 +251,8 @@ class image_converter:
                                    2.5 + 3.5 * np.cos(joints[1]) * np.cos(joints[2]) +
                                    3.0 * (- np.sin(joints[1]) * np.sin(joints[3]) + np.cos(joints[1]) * np.cos(joints[2]) * np.cos(joints[3]))
                                    ])
-          return end_effector
-          '''
+          print('estimated: ', end_effector)
+          
 
           R1 = np.array([[np.cos(joints[0]), -np.sin(joints[0]), 0],
           [np.sin(joints[0]), np.cos(joints[0]), 0],
@@ -267,22 +281,13 @@ class image_converter:
           [0, 1, 0],
           [-np.sin(joints[3]),0 , np.cos(joints[3])]])
           '''
-          print('joints: ', joints)
+          #print('joints: ', joints)
 
 
           #return R1 @ l1 + np.dot(np.dot(R1, R2), R3) @ l2 + np.dot(np.dot(np.dot(R1, R2), R3), R4) @ l3
           #return R1 @ l1 + np.dot(R3, np.dot(R2, R1)) @ l2 + np.dot(R4, np.dot(R3, np.dot(R1, R2))) @ l3
           return np.dot(R1, l1) + np.dot(np.dot(R3, np.dot(R2, R1)), l2) + np.dot(np.dot(R4, np.dot(R3, np.dot(R1, R2))), l3)
 
-
-    # calculate matrix tranfomation from DH values for each joint
-    def transformation_matrix_dh(self, alpha, a, d, theta):
-        matrix_values = np.array(
-            [[np.cos(theta), -np.cos(alpha) * np.sin(theta), np.sin(alpha) * np.sin(theta), a * np.cos(theta)],
-             [np.sin(theta), np.cos(alpha) * np.cos(theta), -np.sin(alpha) * np.cos(theta), a * np.sin(theta)],
-             [0, np.sin(alpha), np.cos(alpha), d],
-             [0, 0, 0, 1]])
-        return matrix_values
 
     # Detecting the centre of the orange circle
     def detect_orange_sphere(self, image, image1):
@@ -339,6 +344,64 @@ class image_converter:
 
         return np.array([int(cam1_c1), int(cam2_c1),int((cam1_c2 + cam2_c2)/2)])
 
+
+    def trajectory(self):
+        # get current time
+        cur_time = np.array([rospy.get_time() - self.time_trajectory])
+        #x_d = float(6* np.cos(cur_time * np.pi/100))
+        #y_d = float(6 + np.absolute(1.5* np.sin(cur_time * np.pi/100)))
+        x_d = float(2.5* np.cos(cur_time * np.pi/15))
+        y_d = float(2.5* np.sin(cur_time * np.pi/15))
+        z_d = float(1* np.sin(cur_time * np.pi/15))
+        return np.array([x_d, y_d, z_d])
+
+    def calculate_jacobian(self,image1, image2, xyz, j):
+        # Need to check if more mathematically accurate way of calculating derivatives
+        print('coordinates: ', xyz, self.previous_predicted_coordinates)
+        print('angles: ', j, self.previous_predicted_angles)
+        xyz = xyz - self.previous_predicted_coordinates + np.array([0.01,0.01,0.01], dtype='float64')
+        j = j - self.previous_predicted_angles + np.array([0.01,0.01,0.01,0.01], dtype='float64')
+        jacobian = np.array([[ xyz[0] / j[0], xyz[0] / j[1] , xyz[0] / j[2], xyz[0] / j[3]],
+                             [ xyz[1] / j[0], xyz[1] / j[1] , xyz[1] / j[2], xyz[1] / j[3]],
+                             [ xyz[2] / j[0], xyz[2] / j[1] , xyz[2] / j[2], xyz[2] / j[3]]])
+
+
+        return jacobian
+
+    def control_closed(self,image1, image2, xyz):
+        # P gain
+        K_p = np.array([[10,0,0],[0,10,0],[0,0,10]])
+        # D gain
+        K_d = np.array([[0.1,0,0],[0,0.1,0],[0,0,0.1]])
+        # estimate time step
+        cur_time = np.array([rospy.get_time()])
+        dt = cur_time - self.time_previous_step
+        self.time_previous_step = cur_time
+        # robot end-effector position
+        pos = self.detect_end_effector(image1, image2)  ### NEED TO MAKE 3D later
+        print ("position",pos)
+        print(pos.shape)
+        # desired trajectory
+        pos_d= self.detect_orange_sphere(self.cv_image1, self.cv_image2)
+        # estimate derivative of error
+        print("trajectory:", pos_d)
+        print(pos_d.shape)
+        self.error_d = ((pos_d - pos) - self.error)/dt
+        # estimate error
+        self.error = pos_d-pos
+
+        q = self.detect_joint_angles(image1, image2)  # estimate joints 2 and 4 using camera 1
+        #J_inv = np.linalg.pinv(self.calculate_jacobian(image1, image2, xyz, q))  # calculating the psudeo inverse of Jacobian
+        
+        J = self.calculate_jacobian(image1, image2, xyz, q)
+        J_inv = np.linalg.pinv(J)  # calculating the psudeo inverse of Jacobian
+        print('')
+        dq_d = np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )  # control input (angular velocity of joints)
+        q_d = q + (dt * dq_d)  # control input (angular position of joints)
+        return q_d
+
+
+
     # Get subscriber data
     def callback2(self, data):
         self.target_x = data.data
@@ -371,19 +434,27 @@ class image_converter:
         cv2.waitKey(1)
 
         joints = self.detect_joint_angles(self.cv_image1, self.cv_image2)
+        self.previous_predicted_angles = joints
 
-        tm0t1 = self.transformation_matrix_dh(0, 2.5, 0, 0)
-        tm1t2 = self.transformation_matrix_dh(np.pi / 2, 0, 0, joints[1])
-        tm2t3 = self.transformation_matrix_dh(np.pi / 2, 3.5, 0, joints[2])
-        tm3t4 = self.transformation_matrix_dh(np.pi / 2, 3, 0, joints[3])
-        #tm0t4 = tm0t1 * tm1t2 * tm2t3 * tm3t4
-        tm0t4 = np.dot(np.dot(np.dot(tm0t1, tm1t2), tm2t3),  tm3t4)
-        
-        #print('joint: ', joints)
-        print('estimated 1: ', tm0t4 @ joints)
         x_e = self.forward_kinematics(self.cv_image1, self.cv_image2)
         print('estimated 2: ', x_e)
+        self.previous_predicted_coordinates = x_e
+        
+        q_d = self.control_closed(self.cv_image1, self.cv_image2, x_e)
+        self.joint1=Float64()
+        self.joint1.data= q_d[0]
+        self.joint2=Float64()
+        self.joint2.data= q_d[1]
+        self.joint3=Float64()
+        self.joint3.data= q_d[2]
+        self.joint4=Float64()
+        self.joint4.data= q_d[3]
 
+        # Publishing the desired trajectory on a topic named trajectory(lab 3)
+        x_d = self.trajectory()    # getting the desired trajectory
+        self.trajectory_desired= Float64MultiArray()
+        self.trajectory_desired.data=x_d
+        
 
         # Publish the results
         try:
@@ -391,6 +462,12 @@ class image_converter:
             self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
             ee_pos_cam = self.detect_end_effector(self.cv_image1, self.cv_image1)
             print("camera estimate of end effector position:", ee_pos_cam)
+            
+            self.trajectory_pub.publish(self.trajectory_desired)
+            self.robot_joint1_pub.publish(self.joint1)
+            self.robot_joint2_pub.publish(self.joint2)
+            self.robot_joint3_pub.publish(self.joint3)
+            self.robot_joint3_pub.publish(self.joint4)
 
         except CvBridgeError as e:
             print(e)
