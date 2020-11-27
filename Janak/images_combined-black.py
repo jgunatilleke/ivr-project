@@ -4,6 +4,7 @@ import roslib
 import sys
 import rospy
 import cv2
+import os
 import numpy as np
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
@@ -58,8 +59,9 @@ class image_converter:
         mask1 = cv2.threshold(mask1, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         # fill the black contour white
-        contours1, _ = cv2.findContours(mask1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        #contours1 = contours1[0]
+        #contours1, _ = cv2.findContours(mask1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours1 = cv2.findContours(mask1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours1 = contours1[0] if len(contours1) == 2 else contours1[1]
         for cnt1 in contours1:
             cv2.drawContours(mask1, [cnt1], -1, (255, 255, 255), -1)
 
@@ -69,11 +71,14 @@ class image_converter:
 
         # Chamfer matching with smaller circle
 
-        template1 = cv2.imread('template4.png', 0)
+        file_path = os.path.dirname(__file__)
+
+        file = os.path.join(file_path,'template2.png')
+        template1 = cv2.imread(file, 0)
         w, h = template1.shape[::-1]
 
         results1 = cv2.matchTemplate(morph_open1, template1, cv2.TM_CCOEFF_NORMED)
-        threshold1 = 0.56
+        threshold1 = 0.54 # 0.56
         location1 = np.where(results1 >= threshold1)
 
         for pt in zip(*location1[::-1]):
@@ -81,11 +86,12 @@ class image_converter:
 
         # Chamfer matching with larger circle
 
-        template2 = cv2.imread('test1.png', 0)
+        file = os.path.join(file_path,'template1.png')
+        template2 = cv2.imread(file, 0)
         w, h = template2.shape[::-1]
 
         results2 = cv2.matchTemplate(morph_open1, template2, cv2.TM_CCOEFF_NORMED)
-        threshold2 = 0.76
+        threshold2 = 0.78 # 0.76
         location2 = np.where(results2 >= threshold2)
 
         for pt in zip(*location2[::-1]):
@@ -96,13 +102,13 @@ class image_converter:
         imagec1 = cv2.threshold(imagec1, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         i = 0
-        cam1_c1 = list(range(10))
-        cam1_c2 = list(range(10))
+        cam1_c1 = list(range(20))
+        cam1_c2 = list(range(20))
 
         contours1, _ = cv2.findContours(imagec1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         for cnt1 in contours1:
-            while i <= 3:
+            #while i <= 3:
                 M1 = cv2.moments(cnt1)
                 # Calculate pixel coordinates for the centre of the blob
                 if M1['m00'] != 0:  # check circle has been adequately detected
@@ -131,11 +137,12 @@ class image_converter:
 
         # Chamfer matching with smaller circle
 
-        template1 = cv2.imread('template4.png', 0)
+        file = os.path.join(file_path,'template2.png')
+        template1 = cv2.imread(file, 0)
         w, h = template1.shape[::-1]
 
         results1 = cv2.matchTemplate(morph_open2, template1, cv2.TM_CCOEFF_NORMED)
-        threshold1 = 0.56 # threshold adjusted to optimise detection
+        threshold1 = 0.54 # 0.56 # threshold adjusted to optimise detection
         location1 = np.where(results1 >= threshold1)
 
         for pt in zip(*location1[::-1]):
@@ -143,11 +150,12 @@ class image_converter:
 
         # Chamfer matching with larger circle
 
-        template2 = cv2.imread('test1.png', 0)
+        file = os.path.join(file_path, 'template1.png')
+        template2 = cv2.imread(file, 0)
         w, h = template2.shape[::-1]
 
         results2 = cv2.matchTemplate(morph_open2, template2, cv2.TM_CCOEFF_NORMED)
-        threshold2 = 0.76 # threshold adjusted to optimise detection
+        threshold2 = 0.78 # 0.76 # threshold adjusted to optimise detection
         location2 = np.where(results2 >= threshold2)
 
         for pt in zip(*location2[::-1]):
@@ -157,8 +165,8 @@ class image_converter:
         imagec2 = cv2.threshold(imagec2, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         j = 0
-        cam2_c1 = list(range(10))
-        cam2_c2 = list(range(10))
+        cam2_c1 = list(range(20))
+        cam2_c2 = list(range(20))
 
         contours2, _ = cv2.findContours(imagec2, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -174,7 +182,6 @@ class image_converter:
                     cam2_c2[j] = self.prev_black[2][j]  # assign previously calculated z value
                 j = j + 1
 
-        #print("Camera 2", cam2_c1[0], cam2_c2[0], cam2_c1[1], cam2_c2[1], cam2_c1[2], cam2_c2[2], cam2_c1[3], cam2_c2[3])
 
         cv2.imshow("Camera1", image)
         cv2.imshow("Camera2", image1)
@@ -239,16 +246,6 @@ class image_converter:
         self.joint4_act = Float64()
         self.joint4_act.data = np.array(x_4)
         ########
-
-
-
-
-
-        #circle_positions_x, circle_positions_y, circle_positions_z = self.detect_black_spheres_test(self.cv_image1, self.cv_image2)
-        #print("Circle 1 position: ", circle_positions_x[0], circle_positions_y[0], circle_positions_z[0])
-        #print("Circle 2 position: ", circle_positions_x[1], circle_positions_y[1], circle_positions_z[1])
-        #print("Circle 3 position: ", circle_positions_x[2], circle_positions_y[2], circle_positions_z[2])
-        #print("Circle 4 position: ", circle_positions_x[3], circle_positions_y[3], circle_positions_z[3])
 
 
         self.joints = self.detect_joint_angles(self.cv_image1,self.cv_image2)
