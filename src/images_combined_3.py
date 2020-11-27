@@ -497,7 +497,7 @@ class image_converter:
             self.robot_joint1_pub.publish(self.joint1)
             self.robot_joint2_pub.publish(self.joint2)
             self.robot_joint3_pub.publish(self.joint3)
-            self.robot_joint3_pub.publish(self.joint4)
+            self.robot_joint4_pub.publish(self.joint4)
 
         except CvBridgeError as e:
             print(e)
