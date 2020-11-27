@@ -35,6 +35,9 @@ class image_converter:
 
         # initialize a publisher to send the estimated joint values to a topic names joint_states
         self.joints_pub = rospy.Publisher("/robot/joint_states", Float64MultiArray, queue_size=10)
+        
+        # initialize a publisher to send the estimated target positions to a topic names joint_states
+        self.target_pub = rospy.Publisher("target_position", Float64MultiArray, queue_size=10)
 
         # initialize spublishers to send the joint values to move the robot joints
         self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
@@ -170,9 +173,7 @@ class image_converter:
         base = self.detect_yellow(image, image1)
         target = self.detect_orange_sphere(image, image1)
 
-        distance = a * np.sqrt((base[0] - target[0])**2 + (base[1] - target[1])**2 + (base[2] - target[2])**2)
-
-        #distance = a * (base - target)
+        distance = a * (base - target)
 
         return distance
 
@@ -293,7 +294,7 @@ class image_converter:
                     cam2_c1 = self.prev_orange[1]
                     cam2_c2 = self.prev_orange[2]
 
-        return np.array([int(cam1_c1), int(cam2_c1),int((cam1_c2 + cam2_c2)/2)])
+        return np.array([int(cam2_c1), int(cam1_c1),int((cam1_c2 + cam2_c2)/2)])
 
     # Get subscriber data
     def callback2(self, data):
@@ -353,8 +354,8 @@ class image_converter:
         calc_target = self.detect_orange_sphere(self.cv_image1, self.cv_image2)
         #print("Estimated orange sphere positions:", calc_target, "\n")
 
-        dis_orange = self.distance_basetotarget(self.cv_image1, self.cv_image2)
-        #print ("Distance from base to orange sphere", dis_orange, "\n")
+        self.dis_orange = self.distance_basetotarget(self.cv_image1, self.cv_image2)
+        print ("Distance from base to orange sphere", self.dis_orange, "\n")
 
         cv2.circle(self.cv_image1,(calc_target[0], calc_target[2]), 10, (0,0,0), -1)
         cv2.circle(self.cv_image2, (calc_target[1], calc_target[2]), 10, (0,0,0), -1)
@@ -387,6 +388,10 @@ class image_converter:
         print('####')
         #print()
 
+        self.dis_orange_pub = Float64MultiArray()
+        self.dis_orange_pub.data = self.dis_orange
+
+        
         self.joints = Float64MultiArray()
         self.joints.data = joints[1], joints[2], joints[3]
 
@@ -402,6 +407,8 @@ class image_converter:
             self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
             self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
             self.joints_pub.publish(self.joints)  # estimated joint values
+            self.target_pub.publish(self.dis_orange_pub)  # estimated target position
+
 
             #  sinusoidal signal values to move joints
             self.robot_joint2_pub.publish(self.joint2_act)
